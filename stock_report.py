@@ -5,7 +5,6 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from send_email import send_email  # מודול השליחה
 
 TICKERS = [
-    TICKERS = [
     "AAPL","MSFT","AMZN","GOOG","GOOGL","FB","TSLA","BRK.B","BRK.A","JNJ",
     "V","WMT","JPM","UNH","NVDA","HD","PG","MA","DIS","BAC",
     "XOM","PYPL","VZ","ADBE","CMCSA","NFLX","T","KO","PFE","NKE",
