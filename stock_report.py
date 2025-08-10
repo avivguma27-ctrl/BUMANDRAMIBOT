@@ -30,11 +30,6 @@ TICKERS = [
     "DTE","INFO","CHRW","EFX","CTRA","MCK","PHM","FRC","SWKS","MTB",
     "OKE","XYL","PEG","PNC","EIX","EBAY","CMA","ALXN","DGX","HBI","LHX",
     "BAX","TTWO","AKAM","ODFL","PXD","WDC","LEN","ORCL","SYY","STX",
-    "CDNS","ZBH","TT","WEC","GPN","MGM","XL","HST","TRMB","K","CTXS",
-    "COO","GRMN","HPE","ED","PBCT","LYB","ROK","VTR","VRSN","LDOS","NTAP",
-    "DTE","INFO","CHRW","EFX","CTRA","MCK","PHM","FRC","SWKS","MTB",
-    "OKE","XYL","PEG","PNC","EIX","EBAY","CMA","ALXN","DGX","HBI","LHX",
-    "BAX","TTWO","AKAM","ODFL","PXD","WDC","LEN","ORCL","SYY","STX",
     "CDNS","ALGN","VMC","HSIC","PAYX","CTAS","MTCH","CPRT","L","CE","KEYS",
     "IT","DHI","CAG","RSG","WAB","HUM","DXC","RJF","ES","NDAQ","CERN",
     "WMB","CLX","ODFL","COG","FANG","JBHT","IRM","NWL","GL","CE","CTXS",
@@ -64,11 +59,12 @@ TICKERS = [
     "PNC","PFG","XYL","BXP","PHM","PEG","AMT","XYL","LEN","HWM","BXP","PHM",
     "AMCR","XYL","PHM","AVB","XYL","PHM","LEN","XYL","LEN","PHM","PEP","PEG",
     "XYL","PHM","LEN","PHM","XYL","LEN","XYL","LEN","PHM","XYL","LEN","XYL",
-    # יש להוסיף עוד אם רוצים, הרשימה פה ארוכה מאוד...
 ]
 
-    # הוסף כאן את רשימת הטיקרס שלך המלאה
-]
+# הוסף כאן את רשימת הטיקרס שלך המלאה
+
+# הסרת כפילויות ברשימה
+TICKERS = list(set(TICKERS))
 
 analyzer = SentimentIntensityAnalyzer()
 
