@@ -2,10 +2,10 @@ import os
 import yfinance as yf
 import feedparser
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-from send_email import send_email  # נייבא את המודול שיכיל את פונקציית השליחה
+from send_email import send_email  # מודול השליחה
 
 TICKERS = [
-   TICKERS = [
+    TICKERS = [
     "AAPL","MSFT","AMZN","GOOG","GOOGL","FB","TSLA","BRK.B","BRK.A","JNJ",
     "V","WMT","JPM","UNH","NVDA","HD","PG","MA","DIS","BAC",
     "XOM","PYPL","VZ","ADBE","CMCSA","NFLX","T","KO","PFE","NKE",
@@ -68,7 +68,7 @@ TICKERS = [
     # יש להוסיף עוד אם רוצים, הרשימה פה ארוכה מאוד...
 ]
 
-    # הוסף כאן את כל רשימת הטיקרס שלך
+    # הוסף כאן את רשימת הטיקרס שלך המלאה
 ]
 
 analyzer = SentimentIntensityAnalyzer()
@@ -124,23 +124,19 @@ def get_news_sentiment(ticker, max_items=5):
 def score_stock(stock_data, sentiment):
     score = 0
 
-    # שינוי מחיר
     if abs(stock_data['change_pct']) > 3:
         score += 5
     if stock_data['change_pct'] > 5:
         score += 3
 
-    # נפח מסחר
     if stock_data['today_volume'] > stock_data['avg_volume'] * 1.5:
         score += 3
 
-    # אינדיקטור טכני
     if stock_data['ma10'] > stock_data['ma50']:
         score += 2
     else:
         score -= 1
 
-    # סנטימנט חדשות
     if sentiment > 0.3:
         score += 3
     elif sentiment < -0.3:
@@ -149,10 +145,12 @@ def score_stock(stock_data, sentiment):
     return score
 
 def main():
-    target_email = os.getenv("TARGET_EMAIL")
-    if not target_email:
-        print("ERROR: TARGET_EMAIL environment variable is not set.")
+    target_emails = os.getenv("TARGET_EMAILS")
+    if not target_emails:
+        print("ERROR: TARGET_EMAILS environment variable is not set.")
         return
+
+    email_list = [email.strip() for email in target_emails.split(",")]
 
     messages = []
     for i, ticker in enumerate(TICKERS):
@@ -163,7 +161,7 @@ def main():
         sentiment = get_news_sentiment(ticker)
         score = score_stock(stock_data, sentiment)
 
-        if score >= 7:  # סף דיוק גבוה - אפשר לשנות
+        if score >= 7:
             msg = (
                 f"📈 מניה: {ticker}\n"
                 f"מחיר סגירה היום: {stock_data['today_close']:.2f}$\n"
@@ -179,7 +177,9 @@ def main():
             messages.append(msg)
 
     body = "\n\n".join(messages) if messages else "אין הזדמנויות חמות כרגע."
-    send_email("דוח הזדמנויות מניות S&P 500 - מתקדמים", body, target_email)
+
+    for email in email_list:
+        send_email("דוח הזדמנויות מניות S&P 500 - מתקדמים", body, email)
 
 if __name__ == "__main__":
     main()
