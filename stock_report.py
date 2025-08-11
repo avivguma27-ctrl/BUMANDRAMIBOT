@@ -8,9 +8,9 @@ from email.mime.text import MIMEText
 import smtplib
 
 # ============================== #
-# הגדרות ישירות בקוד - שים לב להכניס את הפרטים שלך כאן
-TARGET_EMAILS = "avivguma12@gmail.com,swrrmy@gmail.com"  # מי מקבל דוח
-EMAIL_USER = "AVIVGUMA12@gmail.com"                          # מייל שולח
+# הגדרות ישירות בקוד - הכנס את הפרטים שלך כאן
+TARGET_EMAILS = "avivguma12@gmail.com,swrrmy028@gmail.com"  # מי מקבל דוח
+EMAIL_USER = "avivguma12@gmail.com"                          # מייל שולח
 EMAIL_PASS = "fxgqtmhqcrszrzyj"                             # סיסמת אפליקציה (App Password)
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
@@ -127,21 +127,32 @@ def score_stock(stock_data, sentiment):
     ma10 = stock_data['ma10']
     ma50 = stock_data['ma50']
 
-    score += min(abs(change_pct) / 2, 5)
-    if change_pct > 5:
-        score += 2
+    # 1. ניקוד על שינוי אחוזי במחיר (מקסימום 30)
+    abs_change = min(abs(change_pct), 10)
+    score += (abs_change / 10) * 30
 
-    if today_volume > avg_volume * 1.5:
-        score += 3
+    # 2. נפח מסחר (מקסימום 25)
+    volume_ratio = today_volume / avg_volume if avg_volume > 0 else 0
+    if volume_ratio > 1:
+        score += min((volume_ratio - 1) / 2 * 25, 25)
 
-    score += 2 if ma10 > ma50 else -1
+    # 3. מגמת ממוצעים נעים (מקסימום 15)
+    if ma10 > ma50:
+        score += 15
+    else:
+        score += 5
 
-    if sentiment > 0.3:
-        score += 3
-    elif sentiment < -0.3:
-        score -= 3
+    # 4. סנטימנט חדשות (מקסימום 20)
+    sentiment_score = max(min((sentiment + 1) / 2, 1), 0)
+    score += sentiment_score * 20
 
-    return score
+    # תיקון ניקוד בין 0 ל-100
+    if score < 0:
+        score = 0
+    if score > 100:
+        score = 100
+
+    return round(score, 2)
 
 def send_email(subject, body, to_email, html=False):
     try:
@@ -175,7 +186,7 @@ def main():
         sentiment = get_news_sentiment(ticker)
         score = score_stock(stock_data, sentiment)
 
-        if score >= 7:
+        if score >= 70:  # רק מניות עם ניקוד מעל 70 בדוח
             messages.append(
                 f"<b>📈 מניה:</b> {ticker}<br>"
                 f"<b>מחיר סגירה:</b> {stock_data['today_close']:.2f}$<br>"
@@ -185,6 +196,7 @@ def main():
                 f"<b>MA10:</b> {stock_data['ma10']:.2f}<br>"
                 f"<b>MA50:</b> {stock_data['ma50']:.2f}<br>"
                 f"<b>סנטימנט:</b> {sentiment:.2f}<br>"
+                f"<b>ניקוד כולל:</b> {score}<br>"
                 f"<hr>"
             )
 
