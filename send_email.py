@@ -1,33 +1,34 @@
-import os
 import smtplib
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+import logging
 
-def send_email(subject, body, to_emails):
-    from_email = os.getenv("EMAIL_USER")
-    app_password = os.getenv("EMAIL_PASSWORD")
+EMAIL_USER = "avivguma12@gmail.com"  # תחליף בהתאם למשתנה סביבה שלך
+EMAIL_PASS = "fxgqtmhqcrszrzyj"     # סיסמת אפליקציה
 
-    if not from_email or not app_password:
-        print("ERROR: EMAIL_USER or EMAIL_PASSWORD not set in env.")
-        return False
+SMTP_SERVER = "smtp.gmail.com"
+SMTP_PORT = 587
 
-    if isinstance(to_emails, str):
-        to_emails = [to_emails]
-
-    msg = MIMEText(body, "plain")
-    msg["Subject"] = subject
-    msg["From"] = from_email
-    msg["To"] = ", ".join(to_emails)
-
+def send_email(subject: str, body: str, to_email: str, html: bool = False):
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(from_email, app_password)
-            server.sendmail(from_email, to_emails, msg.as_string())
-        print(f"Email sent to {msg['To']}")
-        return True
-    except Exception as e:
-        print(f"Failed to send email: {e}")
-        return False
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = EMAIL_USER
+        msg["To"] = to_email
 
-if __name__ == "__main__":
-    # לבדיקה מקומית (כאן תעדכן מיילים שלך)
-    send_email("Test Email", "This is a test email from bot.", ["youremail@gmail.com", "friend@gmail.com"])
+        if html:
+            part = MIMEText(body, "html")
+        else:
+            part = MIMEText(body, "plain")
+
+        msg.attach(part)
+
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(EMAIL_USER, EMAIL_PASS)
+            server.sendmail(EMAIL_USER, to_email, msg.as_string())
+
+        logging.info(f"Email sent successfully to {to_email}")
+
+    except Exception as e:
+        logging.error(f"Failed to send email to {to_email}: {e}")
