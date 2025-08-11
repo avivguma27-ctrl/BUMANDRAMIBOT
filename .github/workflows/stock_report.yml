@@ -26,4 +26,3 @@ jobs:
       - name: Run stock report script
         run: |
           python stock_report.py
-
