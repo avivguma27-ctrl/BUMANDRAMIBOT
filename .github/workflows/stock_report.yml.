@@ -1,32 +1,36 @@
 name: Run Stock Report
 
+# מריץ כל יום בשעה 7:00 UTC וניתן להפעיל ידנית
 on:
   schedule:
-    - cron: '0 7 * * *'  # רץ כל יום בשעה 7:00 UTC (אפשר לשנות לפי הצורך)
-  workflow_dispatch:      # מאפשר להריץ ידנית
+    - cron: '0 7 * * *'
+  workflow_dispatch:
 
 jobs:
   run-stock-report:
     runs-on: ubuntu-latest
 
     steps:
+      # הורדת הקוד מהריפוזיטורי
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      # התקנת Python בגרסה 3.9
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
 
+      # התקנת התלויות הדרושות
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install yfinance feedparser vaderSentiment requests
 
+      # הרצת הסקריפט עם משתני סביבה ל-API ומיילים
       - name: Run stock report script
         env:
           TARGET_EMAILS: ${{ secrets.TARGET_EMAILS }}
           QUIVER_API_KEY: ${{ secrets.QUIVER_API_KEY }}
-          # אם יש עוד משתנים סביבה - הוסף כאן
         run: |
-          python path/to/your_script.py
+          python stock_report.py
