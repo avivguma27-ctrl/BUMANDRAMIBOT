@@ -2,14 +2,39 @@ import os
 import yfinance as yf
 import feedparser
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-from send_email import send_email
 import requests
+import concurrent.futures
+import logging
+from datetime import datetime
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+import smtplib
+from dotenv import load_dotenv
 
-# ==============================
-# הגדרות
-# ==============================
+# ============================== #
+# טעינת משתני סביבה
+load_dotenv()
+
+QUIVER_API_KEY = os.getenv("QUIVER_API_KEY")
+TARGET_EMAILS = os.getenv("TARGET_EMAILS")
+EMAIL_USER = os.getenv("EMAIL_USER")
+EMAIL_PASS = os.getenv("EMAIL_PASS")
+SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+
+if not all([QUIVER_API_KEY, TARGET_EMAILS, EMAIL_USER, EMAIL_PASS]):
+    raise Exception("One or more environment variables are missing. Please check your .env file.")
+
+EMAIL_LIST = [email.strip() for email in TARGET_EMAILS.split(",")]
+
+# ============================== #
+# הגדרת לוגינג
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# ============================== #
+# רשימת מניות (אפשר לצמצם לפי הצורך)
 TICKERS = list(set([
-    "AAPL","MSFT","AMZN","GOOG","GOOGL","FB","TSLA","BRK.B","BRK.A","JNJ",
+  "AAPL","MSFT","AMZN","GOOG","GOOGL","FB","TSLA","BRK.B","BRK.A","JNJ",
     "V","WMT","JPM","UNH","NVDA","HD","PG","MA","DIS","BAC",
     "XOM","PYPL","VZ","ADBE","CMCSA","NFLX","T","KO","PFE","NKE",
     "MRK","INTC","PEP","ABT","CVX","CSCO","ORCL","CRM","MCD","ACN",
@@ -66,12 +91,11 @@ TICKERS = list(set([
 
 analyzer = SentimentIntensityAnalyzer()
 
-# ==============================
-# פונקציות
-# ==============================
 
-def get_stock_data(ticker):
-    """משיכת נתונים טכניים על המניה"""
+# ============================== #
+# פונקציות
+
+def get_stock_data(ticker: str) -> dict | None:
     try:
         stock = yf.Ticker(ticker)
         hist = stock.history(period="60d")
@@ -96,12 +120,11 @@ def get_stock_data(ticker):
             "ma50": ma50
         }
     except Exception as e:
-        print(f"Error getting stock data for {ticker}: {e}")
+        logging.error(f"Error getting stock data for {ticker}: {e}")
         return None
 
 
-def get_news_sentiment(ticker, max_items=5):
-    """משיכת סנטימנט חדשות מגוגל ניוז"""
+def get_news_sentiment(ticker: str, max_items: int = 5) -> float:
     try:
         rss_url = f"https://news.google.com/rss/search?q={ticker}&hl=en-US&gl=US&ceid=US:en"
         feed = feedparser.parse(rss_url)
@@ -109,138 +132,168 @@ def get_news_sentiment(ticker, max_items=5):
         for entry in feed.entries[:max_items]:
             vs = analyzer.polarity_scores(entry.title)
             sentiments.append(vs['compound'])
-        return sum(sentiments) / len(sentiments) if sentiments else 0
+        return sum(sentiments) / len(sentiments) if sentiments else 0.0
     except Exception as e:
-        print(f"Error getting news sentiment for {ticker}: {e}")
-        return 0
+        logging.error(f"Error getting news sentiment for {ticker}: {e}")
+        return 0.0
 
 
-def get_politician_trades(ticker):
-    """בדיקת קניות/מכירות של פוליטיקאים (מקור: QuiverQuant API)"""
+def get_politician_trades(ticker: str, api_key: str) -> int:
     try:
         url = f"https://api.quiverquant.com/beta/historical/congresstrading/{ticker}"
-        headers = {"Authorization": f"Token {os.getenv('QUIVER_API_KEY')}"}
-        r = requests.get(url, headers=headers)
+        headers = {"Authorization": f"Token {api_key}"}
+        r = requests.get(url, headers=headers, timeout=10)
         if r.status_code == 200 and r.json():
             buys = [t for t in r.json() if t["Transaction"] == "Purchase"]
             return len(buys)
     except Exception as e:
-        print(f"Error getting politician trades for {ticker}: {e}")
+        logging.error(f"Error getting politician trades for {ticker}: {e}")
     return 0
 
 
-def get_insider_trades(ticker):
-    """בדיקת קניות של מנהלים בכירים (מקור: QuiverQuant API)"""
+def get_insider_trades(ticker: str, api_key: str) -> int:
     try:
         url = f"https://api.quiverquant.com/beta/historical/insidertrading/{ticker}"
-        headers = {"Authorization": f"Token {os.getenv('QUIVER_API_KEY')}"}
-        r = requests.get(url, headers=headers)
+        headers = {"Authorization": f"Token {api_key}"}
+        r = requests.get(url, headers=headers, timeout=10)
         if r.status_code == 200 and r.json():
-            buys = [t for t in r.json() if t["Transaction"] == "Buy"]
+            buys = [t for t in r.json() if t["Transaction"].lower() == "buy"]
             return len(buys)
     except Exception as e:
-        print(f"Error getting insider trades for {ticker}: {e}")
+        logging.error(f"Error getting insider trades for {ticker}: {e}")
     return 0
 
 
-def get_institutional_holding(ticker):
-    """בדיקת אחזקות מוסדיים (מקור: QuiverQuant API)"""
+def get_institutional_holding(ticker: str, api_key: str) -> int:
     try:
         url = f"https://api.quiverquant.com/beta/historical/institutionalownership/{ticker}"
-        headers = {"Authorization": f"Token {os.getenv('QUIVER_API_KEY')}"}
-        r = requests.get(url, headers=headers)
+        headers = {"Authorization": f"Token {api_key}"}
+        r = requests.get(url, headers=headers, timeout=10)
         if r.status_code == 200 and r.json():
             latest = r.json()[0]
             return latest.get("Shares", 0)
     except Exception as e:
-        print(f"Error getting institutional holdings for {ticker}: {e}")
+        logging.error(f"Error getting institutional holdings for {ticker}: {e}")
     return 0
 
 
-def score_stock(stock_data, sentiment, pol_trades, insider_trades, inst_holding):
-    """חישוב ניקוד כולל"""
-    score = 0
+def score_stock(stock_data: dict, sentiment: float, pol_trades: int, insider_trades: int, inst_holding: int) -> float:
+    score = 0.0
 
-    # שינוי מחיר חד
-    if abs(stock_data['change_pct']) > 3:
-        score += 5
-    if stock_data['change_pct'] > 5:
-        score += 3
+    change_pct = stock_data['change_pct']
+    today_volume = stock_data['today_volume']
+    avg_volume = stock_data['avg_volume']
+    ma10 = stock_data['ma10']
+    ma50 = stock_data['ma50']
 
-    # נפח מסחר גבוה
-    if stock_data['today_volume'] > stock_data['avg_volume'] * 1.5:
-        score += 3
-
-    # מגמה חיובית
-    if stock_data['ma10'] > stock_data['ma50']:
+    score += min(abs(change_pct) / 2, 5)  # עד 5 נקודות על שינוי מחירים
+    if change_pct > 5:
         score += 2
-    else:
-        score -= 1
 
-    # סנטימנט חיובי
+    if today_volume > avg_volume * 1.5:
+        score += 3
+
+    score += 2 if ma10 > ma50 else -1
+
     if sentiment > 0.3:
         score += 3
     elif sentiment < -0.3:
         score -= 3
 
-    # קניות פוליטיקאים
     if pol_trades > 0:
         score += 2
 
-    # קניות מנהלים בכירים
     if insider_trades > 0:
         score += 2
 
-    # אחזקות מוסדיים גבוהות
     if inst_holding > 1_000_000:
         score += 1
 
     return score
 
 
+def send_email(subject: str, body: str, to_email: str, html: bool = False):
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = EMAIL_USER
+        msg["To"] = to_email
+
+        if html:
+            part = MIMEText(body, "html")
+        else:
+            part = MIMEText(body, "plain")
+
+        msg.attach(part)
+
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server.starttls()
+        server.login(EMAIL_USER, EMAIL_PASS)
+        server.sendmail(EMAIL_USER, to_email, msg.as_string())
+        server.quit()
+
+        logging.info(f"Email sent to {to_email}")
+    except Exception as e:
+        logging.error(f"Error sending email to {to_email}: {e}")
+
+
+def process_ticker(ticker: str) -> str | None:
+    stock_data = get_stock_data(ticker)
+    if not stock_data:
+        return None
+
+    sentiment = get_news_sentiment(ticker)
+    pol_trades = get_politician_trades(ticker, QUIVER_API_KEY)
+    insider_trades = get_insider_trades(ticker, QUIVER_API_KEY)
+    inst_holding = get_institutional_holding(ticker, QUIVER_API_KEY)
+
+    score = score_stock(stock_data, sentiment, pol_trades, insider_trades, inst_holding)
+
+    if score >= 7:
+        return (
+            f"<b>📈 מניה:</b> {ticker}<br>"
+            f"<b>מחיר סגירה:</b> {stock_data['today_close']:.2f}$<br>"
+            f"<b>שינוי יומי:</b> {stock_data['change_pct']:.2f}%<br>"
+            f"<b>נפח היום:</b> {stock_data['today_volume']}<br>"
+            f"<b>נפח ממוצע 30 יום:</b> {stock_data['avg_volume']:.0f}<br>"
+            f"<b>MA10:</b> {stock_data['ma10']:.2f}<br>"
+            f"<b>MA50:</b> {stock_data['ma50']:.2f}<br>"
+            f"<b>סנטימנט:</b> {sentiment:.2f}<br>"
+            f"<b>קניות פוליטיקאים:</b> {pol_trades}<br>"
+            f"<b>קניות מנהלים בכירים:</b> {insider_trades}<br>"
+            f"<b>אחזקות מוסדיים:</b> {inst_holding}<br>"
+            f"<b>ניקוד:</b> {score:.2f}<br>"
+            "<hr>"
+        )
+    return None
+
+
 def main():
-    target_emails = os.getenv("TARGET_EMAILS")
-    if not target_emails:
-        print("ERROR: TARGET_EMAILS environment variable is not set.")
-        return
-
-    email_list = [e.strip() for e in target_emails.split(",")]
-
+    logging.info("Start processing tickers...")
     messages = []
-    for ticker in TICKERS:
-        stock_data = get_stock_data(ticker)
-        if not stock_data:
-            continue
 
-        sentiment = get_news_sentiment(ticker)
-        pol_trades = get_politician_trades(ticker)
-        insider_trades = get_insider_trades(ticker)
-        inst_holding = get_institutional_holding(ticker)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(process_ticker, ticker): ticker for ticker in TICKERS}
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                result = future.result()
+                if result:
+                    messages.append(result)
+            except Exception as e:
+                ticker = futures[future]
+                logging.error(f"Error processing ticker {ticker}: {e}")
 
-        score = score_stock(stock_data, sentiment, pol_trades, insider_trades, inst_holding)
+    if not messages:
+        body = "<p>אין הזדמנויות כרגע.</p>"
+    else:
+        body = "<h2>דוח הזדמנויות מניות משודרג</h2>" + "".join(messages)
 
-        if score >= 7:
-            msg = (
-                f"📈 מניה: {ticker}\n"
-                f"מחיר סגירה: {stock_data['today_close']:.2f}$\n"
-                f"שינוי יומי: {stock_data['change_pct']:.2f}%\n"
-                f"נפח היום: {stock_data['today_volume']}\n"
-                f"נפח ממוצע 30 יום: {stock_data['avg_volume']:.0f}\n"
-                f"MA10: {stock_data['ma10']:.2f}\n"
-                f"MA50: {stock_data['ma50']:.2f}\n"
-                f"סנטימנט: {sentiment:.2f}\n"
-                f"קניות פוליטיקאים: {pol_trades}\n"
-                f"קניות מנהלים בכירים: {insider_trades}\n"
-                f"אחזקות מוסדיים: {inst_holding}\n"
-                f"ניקוד: {score}\n"
-                "-------------------------"
-            )
-            messages.append(msg)
+    subject = f"דוח הזדמנויות מניות משודרג - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
-    body = "\n\n".join(messages) if messages else "אין הזדמנויות כרגע."
+    for email in EMAIL_LIST:
+        send_email(subject, body, email, html=True)
 
-    for email in email_list:
-        send_email("דוח הזדמנויות מניות משודרג", body, email)
+    logging.info("Finished sending emails.")
 
 
 if __name__ == "__main__":
